@@ -1,0 +1,102 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Lim Poh Guan"
+date: "Monday, August 17, 2015"
+output: html_document
+---
+
+## Synopsis:
+### This report aims to use machine learning algorithm to predict the class of exercise that the individuals was performing by using measurements available from devices such as Jawbone Up, Nike FuelBand, and Fitbit.  The algorithm will be used to predict 20 different test cases provided in the second part of the project requirement.
+
+## Data:
+### The data for this project come from the source http://groupware.les.inf.puc-rio.br/har.  Thanks Human Activity Recognition (HAR) for allowing us to use the data.
+### The location for the training data is at:
+### https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+### The location for the test data is at:
+### https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Environment Setup:
+```{r, echo = TRUE}
+#set working directory
+setwd("~/LPG/IDA/PML")
+
+#load library
+library(caret)
+
+#load training set
+pmlTrain<-read.csv("pml-training.csv", header=T, na.strings=c("NA", "#DIV/0!"))
+#load testing set
+pmlTest<-read.csv("pml-testing.csv", header=T, na.string=c("NA", "#DIV/0!"))
+
+set.seed(15000)
+```
+
+##Data Cleaning:
+
+```{r, echo = TRUE}
+#cleanup data by removing unnecessary data such as cvtd_timestamp, near zero variance and NA's
+rIndex <- grep("X|user_name|cvtd_timestamp", names(pmlTrain))
+pmlTrain <- pmlTrain[, -rIndex]
+
+nzv <- nearZeroVar(pmlTrain)
+pmlTrain <- pmlTrain[, -nzv]
+
+NAs <- apply(pmlTrain, 2, function(x) {
+  sum(is.na(x))
+})
+pmlTrain <- pmlTrain[, which(NAs == 0)]
+
+#partitioning was performed to obtain an 80% training set and an 20% test set.
+
+tIndex <- createDataPartition(y = pmlTrain$classe, p = 0.2, list = FALSE)
+pmlTrain80 <- pmlTrain[-tIndex, ]
+pmlTrain20 <- pmlTrain[tIndex, ]
+```
+
+## Modelling:
+### 1. Create a model by fitting a single tree
+```{r, echo = TRUE}
+modFitST <- train(pmlTrain20$classe ~ ., data = pmlTrain20, method = "rpart")
+modFitST
+resultsST <- modFitST$results
+round(max(resultsST$Accuracy), 4) * 100
+
+#The accuracy of the model is low at 53.38%
+```
+
+### 2. Create a model by using a random forests
+```{r, echo = TRUE}
+ctrlTrain20 <- trainControl(method = "cv", number = 4, allowParallel = TRUE)
+modFitRF <- train(pmlTrain20$classe ~ ., data = pmlTrain20, method = "rf", 
+                prof = TRUE, trControl = ctrlTrain20)
+modFitRF
+resultsRF <- modFitRF$results
+round(max(resultsRF$Accuracy), 4) * 100
+
+#The accuracy of the model is high at 98.83%
+
+```
+## Cross Validation:
+```{r, echo = TRUE}
+#use the modFitRF to predict new values within the 80% data Training set pmlTrain80 that we created for cross-validation
+  
+predpmlTrain80 <- predict(modFitRF, pmlTrain80)
+pmlTrain80$predRight <- predpmlTrain80 == pmlTrain80$classe
+table(predpmlTrain80, pmlTrain80$classe)
+
+
+predpmlTrain80Res <- postResample(predpmlTrain80, pmlTrain80$classe)
+predpmlTrain80Res
+#The prediction fitted the 80% data Training set pmTrain80 is slightly better than the 20% data Training set at 99.11%
+```
+## Expected out of sample error:
+```{r, echo = TRUE}
+#calculate the expected out of sample error based on the 80% data Train set that we created for cross-validation:
+cfMatrix <- confusionMatrix(predpmlTrain80, pmlTrain80$classe)
+cfMatrix
+#The expected out of sample error is: 0.89%
+#Both method using the confusionMatrix function from the Caret package and the predict function provide the same answer.
+```
+## Conclusion:
+### The above model proved to be reliable to predict the the class of exercise that the individuals was performing.  We will use this algorithm for the part 2 of the project.
